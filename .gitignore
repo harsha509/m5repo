@@ -1,0 +1,8 @@
+.venv/
+cardputer/.pio/
+cardputer/release/
+cardputer/src/wifi_config.h
+*.log
+.DS_Store
+__pycache__/
+*.pyc
