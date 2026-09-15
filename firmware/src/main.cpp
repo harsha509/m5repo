@@ -799,6 +799,12 @@ void drawInfo() {
   };
 
   if (infoPage == INFO_PG_SESSIONS) {
+    // A finished session shortens the list; without this the cursor sits past
+    // the end, no row draws highlighted and Enter quietly does nothing.
+    if (sessSel >= tama.nLines) {
+      sessSel = tama.nLines ? tama.nLines - 1 : 0;
+      sessActionsOpen = false;
+    }
     // Live session list from the laptop agent. Rows are up to 91 chars, so
     // they are written directly rather than through ln()'s 31-char buffer.
     _infoHeader(p, y, "SESSIONS", infoPage);
@@ -1646,7 +1652,7 @@ void loop() {
     }
   }
 
-  if (halBtnA().pressedFor(600) && !btnALong && !swallowBtnA) {
+  if (halBtnA().pressedFor(600) && !btnALong && !swallowBtnA && !onSessionsPage()) {
     btnALong = true;
     sfxMenu();
     if (resetOpen) { resetOpen = false; }
