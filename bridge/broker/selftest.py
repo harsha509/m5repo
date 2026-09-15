@@ -198,6 +198,15 @@ def test_logs_are_device_safe():
     check("keeps the text", "built ok" in out and "rules: 24" in out, repr(out))
 
 
+def test_logs_lead_with_newest():
+    print("logs lead with the newest line, which is all the device shows")
+    rows = "first line\nsecond line\nthird line\nnewest line"
+    joined = " | ".join(reversed([r.strip() for r in sessions.plain(rows).splitlines()
+                                  if r.strip()][-3:]))
+    check("newest leads", joined.startswith("newest line"), joined)
+    check("oldest does not lead", not joined.startswith("second"), joined)
+
+
 def test_macros_resolve():
     print("say macros resolve from policy.json")
     root = Path(__file__).resolve().parents[2]
@@ -219,7 +228,7 @@ def main():
                  test_stale_verdict_ignored, test_ask, test_auth_and_loopback,
                  test_poll_clears_prompt, test_edit_renders_diff,
                  test_interactive_sessions_not_actionable, test_macros_resolve,
-                 test_logs_are_device_safe):
+                 test_logs_are_device_safe, test_logs_lead_with_newest):
         test()
     httpd.shutdown()
 

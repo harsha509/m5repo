@@ -99,9 +99,11 @@ def plain(text: str) -> str:
 
 
 def logs(session_id: str) -> str:
+    """Newest line first: the device copies the head of this into a 64-char
+    buffer, so whatever leads is the only part that reaches the screen."""
     out, err = _run(["logs", session_id])
     rows = [r.strip() for r in plain(out or err or "").splitlines() if r.strip()]
-    return " | ".join(rows[-3:]) or "(no output)"
+    return " | ".join(reversed(rows[-3:])) or "(no output)"
 
 
 def lifecycle(action: str, session_id: str) -> str:
