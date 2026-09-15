@@ -289,7 +289,7 @@ class _Handler(BaseHTTPRequestHandler):
             elif command == "logs":
                 result = sessions.logs(target)[-400:]
             elif command == "say":
-                macro = self.broker.policy._rules.get("macros", {}).get(body.get("macro", ""))
+                macro = self.broker.policy.macros().get(body.get("macro", ""))
                 result = sessions.say(target, macro) if macro else "unknown macro"
             elif command == "refresh":
                 self.broker.refresh_sessions()

@@ -16,6 +16,7 @@ struct TamaState {
   bool     connected;
   char     lines[8][92];
   char     sessIds[8][12];   // short ids from `claude agents`, for control commands
+  bool     sessBg[8];        // false = interactive; lifecycle commands don't apply
   uint8_t  nLines;
   uint16_t lineGen;          // bumps when lines change — lets UI reset scroll
   char     promptId[40];     // pending permission request ID; empty = no prompt
@@ -131,6 +132,16 @@ static void _applyJson(const char* line, TamaState* out) {
       n++;
     }
     for (uint8_t i = n; i < 8; i++) out->sessIds[i][0] = 0;
+  }
+  JsonArray bg = doc["bg"];
+  if (!bg.isNull()) {
+    uint8_t n = 0;
+    for (JsonVariant v : bg) {
+      if (n >= 8) break;
+      out->sessBg[n] = v.as<int>() != 0;
+      n++;
+    }
+    for (uint8_t i = n; i < 8; i++) out->sessBg[i] = false;
   }
   JsonObject pr = doc["prompt"];
   if (!pr.isNull()) {

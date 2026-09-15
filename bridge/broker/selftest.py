@@ -13,6 +13,8 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 
+from . import cards, sessions
+from .policy import Policy
 from .server import Broker, serve
 
 TOKEN = "selftest"
@@ -153,6 +155,57 @@ def test_poll_clears_prompt():
     check("carries session state", "total" in snap and "entries" in snap, snap)
 
 
+def test_edit_renders_diff():
+    print("Edit renders a diff, not a bare path")
+    event = {"session_id": "s1", "cwd": "/Users/x/m5repo", "hook_event_name": "PreToolUse",
+             "tool_name": "Edit", "tool_use_id": "t-edit",
+             "tool_input": {"file_path": "/a/b/main.cpp",
+                            "old_string": "int x = 1;\nint y = 2;",
+                            "new_string": "int x = 42;\nint y = 2;"}}
+    card = cards.approve_card(event, 38)
+    body = "\n".join(card["lines"])
+    check("names the file", "/a/b/main.cpp" in body, body)
+    check("counts the change", "+1 -1" in body, body)
+    check("shows the removal", "-int x = 1;" in body, body)
+    check("shows the addition", "+int x = 42;" in body, body)
+    check("every line fits the column count",
+          all(len(line) <= 38 for line in card["lines"]),
+          [line for line in card["lines"] if len(line) > 38])
+
+    whole_file = {"tool_name": "Write", "tool_use_id": "t-write", "cwd": "/x",
+                  "tool_input": {"file_path": "/a/big.py",
+                                 "content": "\n".join(f"line {i}" for i in range(5000))}}
+    card = cards.approve_card(whole_file, 38)
+    check("a 5000-line Write stays bounded", len(card["lines"]) <= cards.MAX_LINES,
+          len(card["lines"]))
+
+
+def test_interactive_sessions_not_actionable():
+    print("interactive sessions are listed but not actionable")
+    interactive = {"kind": "interactive", "sessionId": "aaaaaaaa-1111", "status": "busy"}
+    background = {"kind": "bg", "sessionId": "bbbbbbbb-2222", "status": "running"}
+    check("interactive is refused", not sessions.is_actionable(interactive))
+    check("background is allowed", sessions.is_actionable(background))
+    check("missing kind defaults to actionable", sessions.is_actionable({"sessionId": "c"}))
+
+
+def test_logs_are_device_safe():
+    print("logs output is stripped for a 64-char ASCII line")
+    raw = "\x1b[38;2;218;124;92mWhirlpooling\u2026\x1b[39m\x1b[50;1H\x1b[Hbuilt ok\n\nrules: 24"
+    out = sessions.plain(raw)
+    check("no escape bytes", "\x1b" not in out, repr(out))
+    check("no non-ascii", all(ord(c) < 127 for c in out), repr(out))
+    check("keeps the text", "built ok" in out and "rules: 24" in out, repr(out))
+
+
+def test_macros_resolve():
+    print("say macros resolve from policy.json")
+    root = Path(__file__).resolve().parents[2]
+    macros = Policy(root / "bridge" / "policy.json").macros()
+    check("run_tests exists", "run_tests" in macros, sorted(macros))
+    check("it is a real prompt", bool(macros.get("run_tests", "").strip()), macros)
+
+
 def main():
     global BASE
     root = Path(__file__).resolve().parents[2]
@@ -164,7 +217,9 @@ def main():
 
     for test in (test_not_gated, test_concurrent, test_timeout_fails_open,
                  test_stale_verdict_ignored, test_ask, test_auth_and_loopback,
-                 test_poll_clears_prompt):
+                 test_poll_clears_prompt, test_edit_renders_diff,
+                 test_interactive_sessions_not_actionable, test_macros_resolve,
+                 test_logs_are_device_safe):
         test()
     httpd.shutdown()
 

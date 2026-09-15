@@ -81,6 +81,12 @@ class Policy:
                      len(loaded.get("escalate", [])), len(loaded.get("deny", [])),
                      loaded.get("default", ALLOW))
 
+    def macros(self) -> dict:
+        """Canned prompts the device may send by key. Never free text."""
+        self.reload()
+        with self._lock:
+            return dict(self._rules.get("macros", {}))
+
     def decide(self, tool_name: str, tool_input: dict) -> str:
         self.reload()
         with self._lock:

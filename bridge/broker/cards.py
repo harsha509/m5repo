@@ -5,10 +5,14 @@ already wrapped to the polling device's column count, which is why porting a
 board is a display driver plus two numbers.
 """
 
+import difflib
 import textwrap
 
 MAX_LINES = 24
 TITLE_MAX = 64
+DIFF_CONTEXT = 1
+DIFF_MAX_ROWS = 16
+DIFF_MAX_INPUT = 400
 
 APPROVE_ACTIONS = ["allow", "deny", "reason"]
 ASK_ACTIONS = ["pick", "other", "deny"]
@@ -40,11 +44,36 @@ def leaf(path: str) -> str:
     return path.rstrip("/").rsplit("/", 1)[-1] or path
 
 
+def _split(text, limit: int = DIFF_MAX_INPUT) -> list:
+    return str(text or "").splitlines()[:limit]
+
+
+def _diff(old, new) -> str:
+    """Unified diff with a +/- tally on top and no file headers — the card
+    already names the file. Input is capped so a whole-file Write cannot make
+    the broker chew through thousands of rows for a 135px screen."""
+    rows = [r for r in difflib.unified_diff(_split(old), _split(new),
+                                            lineterm="", n=DIFF_CONTEXT)
+            if not r.startswith(("---", "+++"))]
+    added = sum(1 for r in rows if r.startswith("+"))
+    removed = sum(1 for r in rows if r.startswith("-"))
+    if len(rows) > DIFF_MAX_ROWS:
+        rows = rows[:DIFF_MAX_ROWS] + ["..."]
+    return "\n".join([f"+{added} -{removed}", *rows])
+
+
 def _body(tool_name: str, tool_input: dict) -> str:
     if not isinstance(tool_input, dict):
         return ""
     if tool_name == "Bash":
         return tool_input.get("command", "") or ""
+    if tool_name in ("Edit", "Write"):
+        path = tool_input.get("file_path", "") or ""
+        if tool_name == "Edit":
+            body = _diff(tool_input.get("old_string", ""), tool_input.get("new_string", ""))
+        else:
+            body = _diff("", tool_input.get("content", ""))
+        return f"{path}\n{body}" if path else body
     for key in ("file_path", "notebook_path", "path", "url", "pattern", "prompt"):
         if tool_input.get(key):
             return str(tool_input[key])

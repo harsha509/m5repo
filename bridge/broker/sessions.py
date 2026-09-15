@@ -6,6 +6,7 @@ the rest are invoked the same way and their failures are reported, never raised.
 
 import json
 import logging
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -14,6 +15,7 @@ CLI = "claude"
 TIMEOUT = 20
 MAX_ENTRIES = 8
 ENTRY_WIDTH = 91
+ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b[()][B0]")
 RUNNING = {"running", "active", "busy", "generating"}
 WAITING = {"blocked", "waiting"}
 
@@ -34,6 +36,13 @@ def _run(args, cwd=None):
 
 def state_of(session: dict) -> str:
     return session.get("state") or session.get("status") or "?"
+
+
+def is_actionable(session: dict) -> bool:
+    """`claude logs/stop/respawn` address background jobs. An interactive
+    session is listed by `agents --json` but answers "No job matching" to all
+    of them, so the device must not offer an action sheet for one."""
+    return session.get("kind") != "interactive"
 
 
 def list_sessions() -> list:
@@ -78,12 +87,21 @@ def snapshot() -> dict:
         "entries": [describe(s) for s in ordered[:MAX_ENTRIES]],
         "ids": [short_id(s) for s in ordered[:MAX_ENTRIES]],
         "states": [state_of(s) for s in ordered[:MAX_ENTRIES]],
+        "bg": [1 if is_actionable(s) else 0 for s in ordered[:MAX_ENTRIES]],
     }
+
+
+def plain(text: str) -> str:
+    """`claude logs` is a rendered TUI. The device shows this in a 64-char
+    ASCII line, so escapes, control bytes and the spinner's box glyphs go."""
+    stripped = ANSI.sub("", text or "")
+    return "".join(c if 32 <= ord(c) < 127 or c == "\n" else " " for c in stripped)
 
 
 def logs(session_id: str) -> str:
     out, err = _run(["logs", session_id])
-    return out or err or "(no output)"
+    rows = [r.strip() for r in plain(out or err or "").splitlines() if r.strip()]
+    return " | ".join(rows[-3:]) or "(no output)"
 
 
 def lifecycle(action: str, session_id: str) -> str:

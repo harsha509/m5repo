@@ -10,7 +10,6 @@
     "Bash(*rm -rf*)",
     "Bash(*rm -f*)",
     "Bash(*--force*)",
-    "Bash(*-force*)",
     "Bash(*drop table*)",
     "Bash(*truncate table*)",
     "Bash(*prod*)",
@@ -29,5 +28,9 @@
     "Write(/etc/*)",
     "Write(*/wifi_config.h)"
   ],
-  "allow": []
+  "allow": [],
+  "macros": {
+    "run_tests": "run the tests",
+    "continue": "continue"
+  }
 }

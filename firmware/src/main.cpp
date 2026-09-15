@@ -309,6 +309,7 @@ static void otaRun(bool fromMenu) {
 // a macro key cross the wire — never a path or a command string.
 static void sessControl(uint8_t action) {
   if (sessSel >= tama.nLines || !tama.sessIds[sessSel][0]) return;
+  if (!tama.sessBg[sessSel]) return;
   const char* id = tama.sessIds[sessSel];
   char cmd[128];
   switch (action) {
@@ -820,13 +821,20 @@ void drawInfo() {
         y += 10;
       }
     } else {
+      bool anyReadOnly = false;
       for (uint8_t i = 0; i < tama.nLines && y < H - 18; i++) {
         bool sel = (i == sessSel);
+        if (!tama.sessBg[i]) anyReadOnly = true;
         spr.setTextColor(sel ? p.text : p.textDim, p.bg);
         spr.setCursor(4, y);
         spr.print(sel ? ">" : " ");
-        spr.printf("%.38s", tama.lines[i]);
+        spr.print(tama.sessBg[i] ? " " : "*");
+        spr.printf("%.37s", tama.lines[i]);
         y += 10;
+      }
+      if (anyReadOnly && !wifiControlResult()[0] && y < H - 10) {
+        spr.setTextColor(p.textDim, p.bg);
+        spr.setCursor(4, H - 10); spr.print("* interactive - read only");
       }
       if (wifiControlResult()[0]) {
         spr.setTextColor(p.body, p.bg);
@@ -1894,7 +1902,11 @@ void loop() {
         } else if (k == HalKey::Down && tama.nLines) {
           sessSel = (sessSel + 1) % tama.nLines; sfxNav(); continue;
         } else if (k == HalKey::Approve && sessSel < tama.nLines) {
-          sfxMenu(); sessActionsOpen = true; sessActionSel = 0; consumedEnter(); continue;
+          // Interactive sessions are listed but `claude stop/logs/respawn`
+          // only address background jobs, so the sheet stays shut for them.
+          if (tama.sessBg[sessSel]) { sfxMenu(); sessActionsOpen = true; sessActionSel = 0; }
+          else                      { sfxBack(); }
+          consumedEnter(); continue;
         }
       }
     }
