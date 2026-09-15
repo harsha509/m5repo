@@ -6,3 +6,6 @@ cardputer/src/wifi_config.h
 .DS_Store
 __pycache__/
 *.pyc
+firmware/.pio/
+firmware/release/
+firmware/src/wifi_config.h

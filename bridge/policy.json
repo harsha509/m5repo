@@ -1,0 +1,33 @@
+{
+  "_comment": "Decides what reaches the device. Edit and save \u2014 the broker reloads on mtime change, no restart and no reflash. Patterns are Tool(glob), matched case-insensitively against a per-tool subject: Bash -> command, Edit/Write/Read -> file_path, everything else -> empty. A bare Tool name matches any subject. Order: deny, then escalate, then allow, then default.",
+  "default": "allow",
+  "deny": [],
+  "escalate": [
+    "AskUserQuestion",
+    "Bash(*git push*)",
+    "Bash(*git commit*)",
+    "Bash(*git reset --hard*)",
+    "Bash(*rm -rf*)",
+    "Bash(*rm -f*)",
+    "Bash(*--force*)",
+    "Bash(*-force*)",
+    "Bash(*drop table*)",
+    "Bash(*truncate table*)",
+    "Bash(*prod*)",
+    "Bash(*kubectl delete*)",
+    "Bash(*terraform destroy*)",
+    "Bash(*terraform apply*)",
+    "Bash(*aws s3 rm*)",
+    "Bash(*shutdown*)",
+    "Bash(*mkfs*)",
+    "Bash(*dd if=*)",
+    "Edit(*/.claude/*)",
+    "Write(*/.claude/*)",
+    "Edit(*.env*)",
+    "Write(*.env*)",
+    "Edit(/etc/*)",
+    "Write(/etc/*)",
+    "Write(*/wifi_config.h)"
+  ],
+  "allow": []
+}
