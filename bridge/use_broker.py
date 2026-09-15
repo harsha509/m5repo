@@ -18,27 +18,31 @@ BROKER_HOOK = [{
     "matcher": MATCHER,
     "hooks": [{"type": "http", "url": "http://127.0.0.1:8787/hook", "timeout": 60}],
 }]
-LEGACY_HOOK = [{
-    "matcher": "Bash|AskUserQuestion",
-    "hooks": [{"type": "http", "url": "http://192.168.0.170/approve", "timeout": 60}],
-}]
+
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--revert", action="store_true",
-                        help="restore the pre-broker hook (device on :80/approve)")
+                        help="remove the PreToolUse hook entirely")
     args = parser.parse_args()
 
     config = json.loads(SETTINGS.read_text())
     backup = SETTINGS.with_suffix(f".json.bak-{int(time.time())}")
     shutil.copy2(SETTINGS, backup)
 
-    config.setdefault("hooks", {})["PreToolUse"] = LEGACY_HOOK if args.revert else BROKER_HOOK
+    hooks = config.setdefault("hooks", {})
+    if args.revert:
+        # The device serves no /approve any more, so there is no earlier hook to
+        # go back to — removing it returns Claude Code to its own prompting.
+        hooks.pop("PreToolUse", None)
+    else:
+        hooks["PreToolUse"] = BROKER_HOOK
     SETTINGS.write_text(json.dumps(config, indent=2) + "\n")
 
     print(f"backup  {backup}")
-    print(f"hook    {json.dumps(config['hooks']['PreToolUse'][0], indent=8)}")
+    print("hook    removed" if args.revert
+          else f"hook    {json.dumps(hooks['PreToolUse'][0], indent=8)}")
     print("\nStart the broker if it is not running:")
     print("  .venv/bin/python -m bridge.broker.server --token <BROKER_TOKEN> --verbose")
 

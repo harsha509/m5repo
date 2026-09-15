@@ -33,7 +33,7 @@ struct TamaState {
 // ---------------------------------------------------------------------------
 // Three modes, checked in priority order:
 //   demo   → auto-cycle fake scenarios every 8s, ignore live data
-//   live   → JSON arrived in the last 10s over USB or BT
+//   live   → JSON arrived in the last 30s over WiFi, USB or BT
 //   asleep → no data, all zeros, "No Claude connected"
 // ---------------------------------------------------------------------------
 

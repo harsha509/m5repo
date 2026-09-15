@@ -1,43 +1,45 @@
-# m5repo — M5Stack devices as a Claude Code control surface
+# m5repo — M5Stack Cardputer as a Claude Code control surface
 
-Physical approval, question-answering and monitoring hardware for the Claude
-Code **CLI**, over WiFi.
+Physical approval, question-answering and session control for the Claude Code
+**CLI**, over WiFi.
 
 ## Layout
 
 ```
-cardputer/     Cardputer Adv (ESP32-S3) — approval remote.  DONE
-cores3/        CoreS3 — desk dashboard.                     planned
-cores3se/      CoreS3 SE — always-on wall panel.            planned
-bridge/        Laptop-side Python: state feeder + BLE fallback.
+firmware/      Cardputer Adv (ESP32-S3) — the device.
+bridge/broker/ Laptop daemon: hook endpoint, policy, session control.
+bridge/policy.json   What reaches the screen. Edit freely; hot-reloaded.
 ```
-
-Each device folder is a self-contained PlatformIO project. The wire protocol
-(newline-delimited JSON) is shared, so device code differs only in display and
-input drivers.
 
 ## How it works
 
-Claude Code's `PreToolUse` hook is configured as `type: "http"` and POSTs each
-matching tool call straight to the device. No laptop daemon sits in the
-approval path.
-
-- **Bash, not risky** → device answers `{}` instantly, Claude proceeds normally
-- **Bash, risky** → command renders on screen, blocks until `Y` or `N`
-- **AskUserQuestion** → the question and its options render; pick one, or type
-  a free-text answer. The answer goes back through `updatedInput`, so the
-  question is settled before it ever reaches the terminal.
-
-Timeouts fail open: if the device is off, the call falls back to the normal
-terminal prompt rather than hanging.
+A broker daemon on the laptop owns the `PreToolUse` hook and the `claude` CLI.
+The device long-polls it and never listens for anything, so there is no inbound
+port and no address for the laptop to discover.
 
 ```
-Claude Code CLI ──POST /approve──► Cardputer ──keys──► {"permissionDecision": ...}
+~/.claude/settings.json ──http──► broker 127.0.0.1:8787/hook
+                                    │  policy.json → allow / escalate / deny
+                                    │
+                        LAN :8787 + bearer token
+                                    │
+                   Cardputer ──GET /device/poll (held open)──►
+                             ◄─POST /device/verdict · /device/control─
 ```
 
-The gate list lives in `cardputer/src/wifi_bridge.cpp` (`GATED[]`): `git push`,
-`git commit`, `rm -rf`, `--force`, `drop table`, `prod`, `terraform destroy`,
-and similar. Everything else is auto-approved silently.
+- **Not escalated** → broker answers `{}` instantly, Claude proceeds normally
+- **Escalated** → the command (or a diff, for `Edit`/`Write`) renders on screen
+  and blocks until `Y` or `N`
+- **AskUserQuestion** → each question renders with its options; the answer goes
+  back through `updatedInput`, so it never reaches the terminal
+
+**Everything fails open.** A timeout, a missing device, a dead broker or any
+exception returns `{}` — "no decision" — and Claude Code's normal permission
+flow takes over. Nothing hangs waiting on hardware.
+
+What escalates lives in `bridge/policy.json`: `git push`, `git commit`,
+`rm -rf`, `--force`, `drop table`, `terraform destroy`, writes to `.env` and
+`.claude/`, and similar. Edit and save — no restart, no reflash.
 
 ## Keys
 
@@ -50,6 +52,8 @@ and similar. Everything else is auto-approved silently.
 | `;` `.` `Enter` | question | move highlight, pick the option |
 | `O` | question | type a free-text answer |
 | `S` / `U` | anywhere | Sessions window / Usage window |
+| `;` `.` `Enter` | Sessions | select a session, open its actions |
+| `` ` `` | modals | back / cancel |
 | `,` `/` | info pages | previous / next page |
 | `]` `[` | anywhere | brightness up / down |
 | `=` `-` | anywhere | volume up / down |
@@ -58,66 +62,78 @@ and similar. Everything else is auto-approved silently.
 `S` and `U` are locked out while a prompt is on screen, so an approval is never
 hidden behind another window.
 
-## Cardputer setup
+In the Sessions window, rows marked `*` are interactive sessions. `claude
+stop/logs/respawn` only address background jobs, so those rows are read-only
+and `Enter` will not open an action sheet for them.
 
-1. `cp src/wifi_config.h.template src/wifi_config.h` and fill in SSID/password
-   (gitignored).
-2. `pio run -e cardputer-adv -t upload`
-3. Find it: `curl http://<device-ip>/health` — or `http://claude.local/health`
-   via mDNS if the address changed.
-4. Point Claude Code at it in `~/.claude/settings.json`:
+## Setup
 
-```json
-"hooks": {
-  "PreToolUse": [
-    { "matcher": "Bash|AskUserQuestion",
-      "hooks": [{ "type": "http", "url": "http://<device-ip>/approve", "timeout": 60 }] }
-  ]
-}
-```
+1. Config:
+   ```bash
+   cp firmware/src/wifi_config.h.template firmware/src/wifi_config.h
+   ```
+   Fill in SSID, password, your laptop's IP as `BROKER_HOST`, and a
+   `BROKER_TOKEN` of your choosing. The file is gitignored.
 
-Use the IP, not `claude.local`, in the hook: mDNS resolution from Node adds
-~5 s to every call. Give the device a DHCP reservation instead.
+2. Flash — confirm the board first, since port numbers move and more than one
+   ESP32-S3 may be attached:
+   ```bash
+   ioreg -p IOUSB -l -w 0 | grep "USB Serial Number"
+   .venv/bin/pio run -e cardputer-adv -d firmware -t upload \
+     --upload-port /dev/cu.usbmodemXXX
+   ```
 
-5. Feed it session state so the Sessions and Usage windows are live:
+3. Start the broker with the same token:
+   ```bash
+   .venv/bin/python -m bridge.broker.server --token <BROKER_TOKEN>
+   ```
+   To keep it running across reboots:
+   ```bash
+   python3 bridge/install_service.py --token <BROKER_TOKEN>
+   ```
 
-```
-python3 -m venv .venv && .venv/bin/pip install bleak
-.venv/bin/python bridge/m5agent.py --device <device-ip>
-```
+4. Point Claude Code at it:
+   ```bash
+   python3 bridge/use_broker.py          # writes the hook, backs up settings.json
+   python3 bridge/use_broker.py --revert  # undo
+   ```
 
-Approvals work without the agent; only the info windows need it.
+5. Check it:
+   ```bash
+   curl http://127.0.0.1:8787/health      # broker + device telemetry
+   .venv/bin/python -m bridge.broker.selftest
+   ```
 
-## Endpoints
+## Broker endpoints
 
-| Route | Port | Method | Purpose |
-| --- | --- | --- | --- |
-| `/approve` | 80 | POST | Hook payload in, verdict (or answered `updatedInput`) out. Blocks on keypress. |
-| `/state` | 81 | POST | Sessions and usage snapshot for the info windows. |
-| `/health` | 80 and 81 | GET | Liveness, IP, RSSI. |
-| `/debug` | 81 | GET | Last line the UI parser applied, pending prompt, unread queue depth. |
+| Route | Bind | Purpose |
+| --- | --- | --- |
+| `/hook` | loopback only | The Claude Code `PreToolUse` hook. |
+| `/device/poll` | LAN + token | Held open; returns one card or a state snapshot. |
+| `/device/verdict` | LAN + token | The answer to a card, by its id. |
+| `/device/control` | LAN + token | `stop` / `respawn` / `rm` / `logs` / `say`. |
+| `/health` | any | Liveness, open cards, per-device telemetry. |
 
-`/debug` is what to check when the screen shows nothing: if `rxQueued` keeps
-growing while `lastApplied.count` stays put, the UI loop is stalled; if
-`lastApplied.head` holds two `{` objects run together, a line was pushed
-without its terminating newline.
+The device has no server of its own. What a `/debug` endpoint would show rides
+the poll query string and surfaces at `/health` — which keeps it observable even
+when the board is unreachable.
 
-`/approve` holds its connection open while a prompt waits for you, so it has a
-port to itself. Port 81 never blocks: the agent's state pushes and health
-probes keep working mid-prompt, and the Sessions window stays live.
+Control commands carry only a session id and a macro key. No path, prompt or
+command string ever crosses the wire.
 
 ## Hardware notes
 
 - Cardputer Adv has **no PSRAM** despite the community `-DBOARD_HAS_PSRAM` flag.
 - WiFi modem sleep must stay enabled; the ESP32 aborts if WiFi and BLE share the
   radio without it.
-- Flash is at ~84% with the `no_ota.csv` layout — switch partitions before
-  adding much more.
-- Brightness and volume persist in NVS (`s_bri`, `s_vol`) alongside the stock
-  settings, and survive reboot and screen-sleep.
+- Flash sits at ~59% of a 3 MB OTA slot.
+- **OTA does not work yet.** The partitions and manifest exist, but the transfer
+  dies partway. Flash over the cable.
+- Brightness and volume persist in NVS (`s_bri`, `s_vol`) and survive reboot and
+  screen-sleep.
 
 ## Credits
 
 Firmware forked from [y88huang/claude-desktop-buddy-cardputer](https://github.com/y88huang/claude-desktop-buddy-cardputer),
 itself a port of [anthropics/claude-desktop-buddy](https://github.com/anthropics/claude-desktop-buddy).
-The WiFi transport (`wifi_bridge.*`) is additive — BLE still works unchanged.
+BLE still works unchanged; the WiFi transport is additive.

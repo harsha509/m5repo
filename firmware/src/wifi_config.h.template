@@ -4,15 +4,10 @@
 #define WIFI_SSID  "YOUR_WIFI_NAME"
 #define WIFI_PASS  "YOUR_WIFI_PASSWORD"
 
-// Shared secret the laptop sends as `Authorization: Bearer <token>`.
-// Leave empty to accept any caller on your LAN.
-#define WIFI_TOKEN ""
-
 // The laptop running bridge/broker. Use the IP, not a .local name.
 #define BROKER_HOST "192.168.0.150"
 #define BROKER_PORT 8787
 
-// Shared secret for the device -> broker channel. Separate from WIFI_TOKEN:
-// that one guards the inbound /approve and /state servers, and the Claude Code
-// hook sends no headers, so the two must not be the same value.
+// Sent as `Authorization: Bearer <token>` on every poll. Must match the
+// broker's --token.
 #define BROKER_TOKEN "CHANGE_ME"

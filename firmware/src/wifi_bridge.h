@@ -15,8 +15,9 @@
 // Outgoing writes go through wifiWrite(), which is what sendCmd() already
 // calls — answering a card needed no change to the UI code.
 //
-// GET :81/health and :81/debug stay served locally; they are the only way to
-// observe this board, which has no usable USB console.
+// The board runs no server at all. What :81/debug used to show rides the poll
+// query string instead and surfaces at the broker's /health, which keeps it
+// observable even when the board's inbound path is unreachable.
 
 void wifiInit(const char* ssid, const char* pass, const char* brokerHost,
               uint16_t brokerPort, const char* brokerToken);
@@ -35,7 +36,7 @@ void wifiControl(const char* json);
 // Last result line from a control command, for the UI to show.
 const char* wifiControlResult();
 
-// Called by the UI drain after each applied line so GET /debug can report what
-// the parser actually saw.
+// Called by the UI drain after each applied line so the poll's telemetry can
+// report what the parser actually saw.
 void wifiNoteRx(size_t len, const char* line, const char* promptId,
                 uint8_t promptKind, uint8_t nOpts, const char* promptTool);
