@@ -25,8 +25,21 @@ def interpreter() -> Path:
     return venv if venv.exists() else Path(sys.executable)
 
 
+def agent_path() -> str:
+    """launchd hands a job a bare PATH, so the `claude` CLI sessions.py shells
+    out to is not found. Carry the installing shell's PATH, with the usual
+    install dirs added in case it was launched from somewhere minimal."""
+    parts = os.environ.get("PATH", "").split(":")
+    for extra in (Path.home() / ".local" / "bin", Path("/opt/homebrew/bin"),
+                  Path("/usr/local/bin"), Path("/usr/bin"), Path("/bin")):
+        if str(extra) not in parts:
+            parts.append(str(extra))
+    return ":".join(p for p in parts if p)
+
+
 def definition(token: str, port: int) -> dict:
     return {
+        "EnvironmentVariables": {"PATH": agent_path(), "HOME": str(Path.home())},
         "Label": LABEL,
         "ProgramArguments": [str(interpreter()), "-m", "bridge.broker.server",
                              "--token", token, "--port", str(port)],
