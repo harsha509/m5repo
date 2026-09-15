@@ -38,6 +38,7 @@ struct TamaState {
 // ---------------------------------------------------------------------------
 
 static uint32_t _lastLiveMs = 0;
+static uint32_t _lastWifiMs = 0;
 static uint32_t _lastBtByteMs = 0;   // hasClient() lies; track actual BT traffic
 static bool     _demoMode   = false;
 static uint8_t  _demoIdx    = 0;
@@ -60,6 +61,11 @@ inline bool dataConnected() {
   return _lastLiveMs != 0 && (millis() - _lastLiveMs) <= 30000;
 }
 
+inline bool dataWifiActive() {
+  // Poll cycle is ~10s; 3x headroom before the transport reads as stale.
+  return _lastWifiMs != 0 && (millis() - _lastWifiMs) <= 30000;
+}
+
 inline bool dataBtActive() {
   // Desktop's idle keepalive is ~10s; give it 1.5x headroom.
   return _lastBtByteMs != 0 && (millis() - _lastBtByteMs) <= 15000;
@@ -67,8 +73,9 @@ inline bool dataBtActive() {
 
 inline const char* dataScenarioName() {
   if (_demoMode) return _FAKES[_demoIdx].n;
-  if (dataConnected()) return dataBtActive() ? "bt" : "usb";
-  return "none";
+  if (!dataConnected()) return "none";
+  if (dataWifiActive()) return "wifi";
+  return dataBtActive() ? "bt" : "usb";
 }
 
 // Set true once the bridge sends a time sync — until then the RTC may
@@ -229,7 +236,7 @@ inline void dataPoll(TamaState* out) {
     if (c == '\n' || c == '\r') {
       if (_wifiLine.len > 0) {
         _wifiLine.buf[_wifiLine.len] = 0;
-        if (_wifiLine.buf[0] == '{') _applyJson(_wifiLine.buf, out);
+        if (_wifiLine.buf[0] == '{') { _applyJson(_wifiLine.buf, out); _lastWifiMs = millis(); }
         wifiNoteRx(_wifiLine.len, _wifiLine.buf, out->promptId,
                    out->promptKind, out->nOpts, out->promptTool);
         _wifiLine.len = 0;
